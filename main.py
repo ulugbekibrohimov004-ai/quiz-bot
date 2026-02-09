@@ -229,11 +229,20 @@ def handle_answer(poll):
 if __name__ == "__main__":
     init_db()
     
-    # Botni alohida potokda ishlatamiz
+    # 1. ESKI WEBHOOKNI O'CHIRISH (MUHIM!)
+    print("Eski webhook tozalanmoqda...")
+    try:
+        bot.remove_webhook()
+        time.sleep(1) # 1 soniya kutamiz
+    except Exception as e:
+        print(f"Webhook o'chirishda xato (zararsiz): {e}")
+
+    # 2. Botni alohida potokda ishlatamiz
+    print("Bot polling rejimida ishga tushmoqda...")
     bot_thread = threading.Thread(target=bot.infinity_polling)
     bot_thread.start()
     
-    # Flask serverni ishlatamiz (Render shu portni tinglaydi)
-    print("Bot va Server ishga tushdi...")
+    # 3. Flask serverni ishlatamiz (Render shu portni tinglaydi)
+    print("Flask Server ishga tushdi...")
     port = int(os.environ.get("PORT", 5000))
     server.run(host="0.0.0.0", port=port)
