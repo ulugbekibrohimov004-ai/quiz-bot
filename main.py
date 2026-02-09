@@ -8,19 +8,29 @@ import time
 import threading
 from flask import Flask, request
 
-# --- SOZLAMALAR ---
-API_TOKEN = '8490998299:AAEKIQQHwFbSboUsPTiu5FpzqWRFDuldb0g' 
-ADMIN_ID = 7201215484 # <-- O'Z ID RAQAMINGIZNI YOZING
-CHANNEL_USERNAME = '@Binary_Mind_Uz'
+# ==========================================
+#              SOZLAMALAR
+# ==========================================
+API_TOKEN = '8490998299:AAEKIQQHwFbSboUsPTiu5FpzqWRFDuldb0g'  # <-- O'zgartiring
+ADMIN_ID = 7201215484  # <-- O'z ID raqamingizni yozing (faqat raqam)
+CHANNEL_USERNAME = '@Binary_Mind_Uz'  # <-- Majburiy obuna kanali
+# ==========================================
 
 bot = telebot.TeleBot(API_TOKEN)
-server = Flask(__name__) # Web server
+server = Flask(__name__)
+user_data = {}
 
-# --- BAZA VA YORDAMCHI FUNKSIYALAR ---
+# --- BAZA BILAN ISHLASH (SQLite) ---
 def init_db():
+    # check_same_thread=False bu Flask va Bot bir vaqtda ishlaganda xato bermasligi uchun kerak
     conn = sqlite3.connect('bot_users.db', check_same_thread=False)
     cursor = conn.cursor()
-    cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, joined_date TEXT)')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            joined_date TEXT
+        )
+    ''')
     conn.commit()
     conn.close()
 
@@ -41,31 +51,15 @@ def get_all_users():
     conn.close()
     return users
 
-# --- FLASK (WEBSAYT QISMI - UYG'OQ TURISHI UCHUN) ---
-@server.route('/')
-def webhook():
-    bot.remove_webhook()
-    bot.set_webhook(url='https://YOUR_APP_NAME.onrender.com/' + API_TOKEN)
-    return "Bot ishlamoqda!", 200
-
-@server.route('/ping')
-def ping():
-    return "Pong", 200
-
-def run_flask():
-    # Render bergan portda ishlash
-    port = int(os.environ.get("PORT", 5000))
-    server.run(host="0.0.0.0", port=port)
-
-# --- BOT FUNKSIYALARI (Qisqartirilgan) ---
-user_data = {}
-
+# --- YORDAMCHI FUNKSIYALAR ---
 def check_subscription(user_id):
     try:
         status = bot.get_chat_member(CHANNEL_USERNAME, user_id).status
-        if status in ['left', 'kicked']: return False
+        if status in ['left', 'kicked']:
+            return False
         return True
-    except: return False
+    except:
+        return True # Xato bo'lsa (masalan admin bo'lmasangiz) o'tkazib yuboradi
 
 def read_excel_quiz(file_path):
     try:
@@ -74,82 +68,172 @@ def read_excel_quiz(file_path):
         for index, row in df.iterrows():
             row = row.dropna()
             if len(row) < 2: continue
-            question_text = str(row[0]) 
-            correct_answer = str(row[1]) 
-            wrong_answers = [str(x) for x in row[2:].tolist()] 
-            all_answers = [correct_answer] + wrong_answers
-            random.shuffle(all_answers)
+            
+            q_text = str(row[0])
+            correct = str(row[1])
+            wrongs = [str(x) for x in row[2:].tolist()]
+            
+            options = [correct] + wrongs
+            random.shuffle(options)
+            
             try:
-                correct_option_id = all_answers.index(correct_answer)
-                questions.append({'question': question_text, 'options': all_answers, 'correct_option_id': correct_option_id})
+                c_id = options.index(correct)
+                questions.append({'q': q_text, 'o': options, 'c': c_id})
             except: pass
         return questions
     except: return None
 
+# --- FLASK SERVER (RENDER UCHUN) ---
+@server.route('/')
+def home():
+    return "Bot ishlayapti! (Active)", 200
+
+# --- BOT BUYRUQLARI ---
 @bot.message_handler(commands=['start'])
-def send_welcome(message):
+def cmd_start(message):
     add_user_to_db(message.from_user.id)
-    if not check_subscription(message.from_user.id):
-        bot.send_message(message.chat.id, f"Iltimos {CHANNEL_USERNAME} ga a'zo bo'ling.")
-        return
-    bot.send_message(message.chat.id, "Excel fayl yuboring.")
-
-@bot.message_handler(content_types=['document'])
-def handle_docs(message):
-    try:
-        file_info = bot.get_file(message.document.file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        file_name = f"quiz_{message.chat.id}.xlsx"
-        with open(file_name, 'wb') as new_file: new_file.write(downloaded_file)
-        questions = read_excel_quiz(file_name)
-        os.remove(file_name)
-        
-        if not questions:
-            bot.reply_to(message, "Xatolik.")
-            return
-
-        random.shuffle(questions)
-        user_data[message.chat.id] = {'all_questions': questions, 'total': len(questions), 'score': 0, 'idx': 0, 'limit': len(questions), 'timer': 15}
-        
-        bot.send_message(message.chat.id, "Test boshlandi! 15 soniya vaqt.")
-        send_next_question(message.chat.id)
-    except Exception as e:
-        bot.reply_to(message, f"Xato: {e}")
-
-def send_next_question(chat_id):
-    data = user_data.get(chat_id)
-    if not data: return
-    if data['idx'] >= data['limit']:
-        bot.send_message(chat_id, f"Tugadi! Natija: {data['score']}/{data['limit']}")
-        del user_data[chat_id]
-        return
     
-    q = data['all_questions'][data['idx']]
-    bot.send_poll(chat_id, f"{data['idx']+1}. {q['question']}", q['options'], type='quiz', correct_option_id=q['correct_option_id'], open_period=data['timer'], is_anonymous=False)
+    if not check_subscription(message.from_user.id):
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("Kanalga a'zo bo'lish", url=f"https://t.me/{CHANNEL_USERNAME.replace('@', '')}"))
+        markup.add(types.InlineKeyboardButton("Tekshirish", callback_data="check_sub"))
+        bot.send_message(message.chat.id, f"Botdan foydalanish uchun {CHANNEL_USERNAME} ga a'zo bo'ling!", reply_markup=markup)
+        return
 
-@bot.poll_answer_handler()
-def handle_poll(poll):
-    uid = poll.user.id
-    if uid in user_data:
-        data = user_data[uid]
-        q = data['all_questions'][data['idx']]
-        if poll.option_ids[0] == q['correct_option_id']: data['score'] += 1
-        data['idx'] += 1
-        send_next_question(uid)
+    bot.send_message(message.chat.id, "Assalomu alaykum! Menga Excel fayl yuboring.")
+
+@bot.callback_query_handler(func=lambda call: call.data == "check_sub")
+def callback_check(call):
+    if check_subscription(call.from_user.id):
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+        bot.send_message(call.message.chat.id, "Obuna tasdiqlandi! Excel fayl yuboring.")
+    else:
+        bot.answer_callback_query(call.id, "Siz hali a'zo bo'lmadingiz!", show_alert=True)
+
+@bot.message_handler(commands=['stop'])
+def cmd_stop(message):
+    if message.chat.id in user_data:
+        del user_data[message.chat.id]
+        bot.send_message(message.chat.id, "🛑 Test to'xtatildi.")
+    else:
+        bot.send_message(message.chat.id, "Hozir test ketmayapti.")
 
 @bot.message_handler(commands=['send'])
-def send_broadcast(message):
+def cmd_broadcast(message):
     if message.from_user.id != ADMIN_ID: return
+    text = message.text.replace('/send', '').strip()
+    if not text:
+        bot.reply_to(message, "Matn yozing.")
+        return
+    
     users = get_all_users()
-    for u in users:
-        try: bot.send_message(u, message.text.replace('/send', ''))
+    count = 0
+    for user_id in users:
+        try:
+            bot.send_message(user_id, text)
+            count += 1
+            time.sleep(0.05)
         except: pass
-    bot.reply_to(message, "Yuborildi.")
+    bot.reply_to(message, f"Xabar {count} kishiga yuborildi.")
 
-if __name__ == '__main__':
+@bot.message_handler(content_types=['document'])
+def handle_file(message):
+    if not check_subscription(message.from_user.id):
+        bot.reply_to(message, f"Avval {CHANNEL_USERNAME} ga a'zo bo'ling!")
+        return
+
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        downloaded = bot.download_file(file_info.file_path)
+        fname = f"quiz_{message.chat.id}.xlsx"
+        with open(fname, 'wb') as f: f.write(downloaded)
+        
+        qs = read_excel_quiz(fname)
+        os.remove(fname)
+        
+        if not qs:
+            bot.reply_to(message, "Fayl xato yoki savollar yo'q.")
+            return
+
+        random.shuffle(qs)
+        user_data[message.chat.id] = {
+            'qs': qs, 'total': len(qs), 'score': 0, 'idx': 0, 'limit': len(qs), 'timer': 15
+        }
+        
+        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+        markup.add('10', '20', '30', f'Hammasi ({len(qs)})')
+        msg = bot.send_message(message.chat.id, f"Jami {len(qs)} ta savol. Nechta ishlaysiz?", reply_markup=markup)
+        bot.register_next_step_handler(msg, step_limit)
+        
+    except Exception as e:
+        bot.reply_to(message, f"Xatolik: {e}")
+
+def step_limit(message):
+    cid = message.chat.id
+    if cid not in user_data: return
+    if message.text == '/stop': cmd_stop(message); return
+
+    txt = message.text
+    limit = user_data[cid]['total']
+    if txt.isdigit(): limit = int(txt)
+    
+    user_data[cid]['limit'] = min(limit, user_data[cid]['total'])
+    
+    markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+    markup.add('10', '15', '30', '45')
+    msg = bot.send_message(cid, "Har bir savolga necha soniya?", reply_markup=markup)
+    bot.register_next_step_handler(msg, step_timer)
+
+def step_timer(message):
+    cid = message.chat.id
+    if cid not in user_data: return
+    if message.text == '/stop': cmd_stop(message); return
+    
+    try: user_data[cid]['timer'] = int(message.text)
+    except: user_data[cid]['timer'] = 15
+    
+    bot.send_message(cid, "Boshladik! (/stop - to'xtatish)", reply_markup=types.ReplyKeyboardRemove())
+    send_question(cid)
+
+def send_question(cid):
+    data = user_data.get(cid)
+    if not data: return
+    
+    if data['idx'] >= data['limit']:
+        bot.send_message(cid, f"🏁 Tugadi!\nNatija: {data['score']} / {data['limit']}")
+        del user_data[cid]
+        return
+        
+    q = data['qs'][data['idx']]
+    try:
+        bot.send_poll(cid, f"{data['idx']+1}. {q['q']}", q['o'], type='quiz', 
+                      correct_option_id=q['c'], open_period=data['timer'], is_anonymous=False)
+    except:
+        del user_data[cid] # Bot bloklansa ma'lumotni o'chirish
+
+@bot.poll_answer_handler()
+def handle_answer(poll):
+    uid = poll.user.id
+    if uid not in user_data: return
+    
+    data = user_data[uid]
+    q = data['qs'][data['idx']]
+    
+    if poll.option_ids[0] == q['c']:
+        data['score'] += 1
+    
+    data['idx'] += 1
+    send_question(uid)
+
+# --- ISHGA TUSHIRISH (MAIN) ---
+if __name__ == "__main__":
     init_db()
-    # Botni alohida oqimda ishlatish
-    t = threading.Thread(target=bot.infinity_polling)
-    t.start()
-    # Flask serverni ishlatish
-    run_flask()
+    
+    # Botni alohida potokda ishlatamiz
+    bot_thread = threading.Thread(target=bot.infinity_polling)
+    bot_thread.start()
+    
+    # Flask serverni ishlatamiz (Render shu portni tinglaydi)
+    print("Bot va Server ishga tushdi...")
+    port = int(os.environ.get("PORT", 5000))
+    server.run(host="0.0.0.0", port=port)
