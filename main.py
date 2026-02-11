@@ -79,7 +79,7 @@ def read_excel_quiz(file_path):
 # --- FLASK SERVER VA O'ZINI UYG'OTISH ---
 @server.route('/')
 def home():
-    return "Bot ishlayapti! (Active)", 200
+    return "Bot ishlayapti!🍾 (Active)", 200
 
 def keep_alive():
     """Render serverni uxlab qolmasligi uchun har 5 daqiqada o'ziga so'rov yuboradi"""
@@ -285,4 +285,5 @@ if __name__ == "__main__":
     
     # 4. Flask Web Server
     port = int(os.environ.get("PORT", 5000))
+
     server.run(host="0.0.0.0", port=port)
