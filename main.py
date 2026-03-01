@@ -79,7 +79,7 @@ def read_excel_quiz(file_path):
 # --- FLASK SERVER VA O'ZINI UYG'OTISH ---
 @server.route('/')
 def home():
-    return "Bot ishlayapti!🍾 (Active)", 200
+    return "Bot ishlayapti! (Active)", 200
 
 def keep_alive():
     """Render serverni uxlab qolmasligi uchun har 5 daqiqada o'ziga so'rov yuboradi"""
@@ -103,12 +103,12 @@ def cmd_start(message):
     bot.send_message(message.chat.id, """Assalomu alaykum!
     📊 Bot uchun Excel faylingiz quyidagi tartibda bolishi SHART:
     A ustun: Savol matni.
-    B ustun: ✅ To‘g‘ri javob (doim shu yerga yoziladi).
-    C, D, E... ustunlar: ❌ Noto‘g‘ri javob variantlari.
+    B ustun: ✅ Togri javob (doim shu yerga yoziladi).
+    C, D, E... ustunlar: ❌ Notogri javob variantlari.
     Namuna:
     | A (Savol) | B (To‘g‘ri) | C (Xato) | D (Xato) |
     | :--- | :--- | :--- | :--- |
-    | O‘zbekiston poytaxti? | Toshkent | Samarqand | Buxoro |
+    | Uzbekiston poytaxti? | Toshkent | Samarqand | Buxoro |
     | 2 + 2 nechi? | 4 | 5 | 3 | 1 |
     | Apple asoschisi kim? | Stiv Jobs | Bill Geyts | Ilon Mask |""")
 
@@ -210,8 +210,8 @@ def send_question(cid):
         # Tugmalarni yuborish (Davom etish / To'xtatish)
         markup = types.InlineKeyboardMarkup()
         markup.add(
-            types.InlineKeyboardButton("🟢 Davom ettirish", callback_data="next_q"),
-            types.InlineKeyboardButton("🛑 To'xtatish", callback_data="stop_q")
+            types.InlineKeyboardButton("🟢 Davom ettirish", callback_data="next_q", style="success"),
+            types.InlineKeyboardButton("🛑 To'xtatish", callback_data="stop_q", style="danger")
         )
         ctrl_msg = bot.send_message(cid, "Vaqt tugadimi yoki o'tkazib yuborasizmi?", reply_markup=markup)
         data['ctrl_msg_id'] = ctrl_msg.message_id
@@ -285,5 +285,4 @@ if __name__ == "__main__":
     
     # 4. Flask Web Server
     port = int(os.environ.get("PORT", 5000))
-
     server.run(host="0.0.0.0", port=port)
